@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atmospheric Re-Entry Physics Simulator</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:      #060a10;
+  --panel:   #0b1220;
+  --border:  #1a2d4a;
+  --accent:  #00c3ff;
+  --accent2: #ff6b1a;
+  --green:   #39ff7a;
+  --warn:    #ffcc00;
+  --danger:  #ff3a3a;
+  --dim:     #2a4060;
+  --text:    #c8ddf0;
+  --label:   #5b8aaa;
+}
+
+html, body {
+  width:100%; height:100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 252px 1fr 252px;
+  grid-template-rows: 44px 1fr 172px;
+  width: 100vw; height: 100vh;
+  gap: 1px;
+  background: var(--border);
+}
+
+/* HEADER */
+#header {
+  grid-column: 1 / -1;
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--accent);
+  letter-spacing: 3px;
+  font-weight: bold;
+}
+.mission-title {
+  font-size: 11px;
+  color: var(--label);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.status-bar {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: monospace;
+  font-size: 11px;
+}
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: blink 1.8s ease-in-out infinite;
+}
+.status-dot.idle { background: var(--dim); box-shadow: none; animation: none; }
+.status-dot.impact-dot { background: var(--danger); box-shadow: 0 0 6px var(--danger); animation: none; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+/* PANELS */
+#controls-panel {
+  grid-column: 1; grid-row: 2;
+  background: var(--panel);
+  overflow-y: auto;
+  padding: 10px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+#viewport {
+  grid-column: 2; grid-row: 2;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+}
+#mainCanvas { display: block; width: 100%; height: 100%; }
+#telemetry-panel {
+  grid-column: 3; grid-row: 2;
+  background: var(--panel);
+  overflow-y: auto;
+  padding: 10px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+#graphs-bar {
+  grid-column: 1 / -1; grid-row: 3;
+  background: var(--panel);
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 1px;
+  background: var(--border);
+  border-top: 1px solid var(--border);
+}
+.graph-cell {
+  background: var(--panel);
+  display: flex; flex-direction: column;
+  padding: 5px 7px;
+}
+.graph-label {
+  font-family: monospace;
+  font-size: 9px;
+  color: var(--label);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 3px;
+}
+.graph-canvas { flex: 1; width: 100%; display: block; }
+
+/* SECTION */
+.section { border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
+.section-head {
+  background: rgba(0,195,255,.06);
+  border-bottom: 1px solid var(--border);
+  padding: 4px 8px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-transform: uppercase;
+  font-weight: bold;
+}
+.section-body { padding: 8px; display: flex; flex-direction: column; gap: 7px; }
+
+/* CONTROLS */
+.control-row { display: flex; flex-direction: column; gap: 3px; }
+.ctrl-hdr { display: flex; justify-content: space-between; align-items: baseline; }
+.ctrl-label { font-size: 10px; color: var(--label); letter-spacing: 1px; text-transform: uppercase; }
+.ctrl-value { font-family: monospace; font-size: 11px; color: var(--accent); }
+
+input[type=range] {
+  -webkit-appearance: none;
+  width: 100%; height: 3px;
+  background: var(--dim);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 5px var(--accent);
+  cursor: pointer;
+}
+input[type=range]::-moz-range-thumb {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  cursor: pointer;
+}
+
+/* PLANET BUTTONS */
+.planet-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+.planet-btn {
+  padding: 6px 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--label);
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .15s;
+}
+.planet-btn:hover { opacity:.8; }
+.p-earth { border-color:#39d0ff !important; color:#39d0ff !important; background:rgba(57,208,255,.08) !important; }
+.p-venus { border-color:#ff9f3a !important; color:#ff9f3a !important; background:rgba(255,159,58,.08) !important; }
+.p-mars  { border-color:#e84040 !important; color:#e84040 !important; background:rgba(232,64,64,.08)  !important; }
+
+/* ACTION BUTTONS */
+.action-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+.action-btn {
+  padding: 7px 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .15s;
+}
+.action-btn:hover { opacity:.8; }
+.action-btn:disabled { opacity:.3; cursor: not-allowed; }
+.btn-start { border-color: var(--green)  !important; color: var(--green)  !important; }
+.btn-pause { border-color: var(--warn)   !important; color: var(--warn)   !important; }
+.btn-reset { border-color: var(--danger) !important; color: var(--danger) !important; }
+
+/* TELEMETRY */
+.telem-group { display: flex; flex-direction: column; gap: 4px; }
+.telem-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(26,45,74,.5);
+}
+.telem-key { font-size: 10px; color: var(--label); text-transform: uppercase; letter-spacing: .5px; flex-shrink: 0; }
+.telem-val { font-family: monospace; font-size: 11px; color: var(--text); text-align: right; }
+.tv-accent { color: var(--accent) !important; }
+.tv-warn   { color: var(--warn)   !important; }
+.tv-danger { color: var(--danger) !important; }
+
+.heat-bar-wrap { height: 5px; background: var(--dim); border-radius: 3px; overflow: hidden; margin-top: 2px; }
+.heat-bar-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg,#00c3ff,#ffcc00,#ff6b1a,#ff3a3a);
+  transition: width .1s;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 2px; }
+
+/* IMPACT BANNER */
+#impact-banner {
+  display: none;
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  background: rgba(6,10,16,.95);
+  border: 1px solid var(--accent2);
+  padding: 18px 28px;
+  font-family: monospace;
+  font-size: 12px;
+  text-align: center;
+  z-index: 10;
+  min-width: 270px;
+  box-shadow: 0 0 40px rgba(255,107,26,.25);
+}
+.ib-title { font-size: 13px; color: var(--accent2); letter-spacing: 2px; margin-bottom: 12px; text-transform: uppercase; }
+.ib-row { display: flex; justify-content: space-between; gap: 20px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.ib-k { color: var(--label); }
+.ib-v { color: var(--warn); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <div id="header">
+    <span class="logo">AERS·V2</span>
+    <span class="mission-title">Atmospheric Entry &amp; Re-Entry Simulator — Multi-Planetary Physics Engine</span>
+    <div class="status-bar">
+      <div class="status-dot idle" id="statusDot"></div>
+      <span id="statusText" style="color:var(--label);letter-spacing:1px">STANDBY</span>
+      <span style="color:var(--dim)">|</span>
+      <span id="fpsDisplay" style="color:var(--label)">-- FPS</span>
+    </div>
+  </div>
+
+  <!-- LEFT: CONTROLS -->
+  <div id="controls-panel">
+
+    <div class="section">
+      <div class="section-head">Planet Selection</div>
+      <div class="section-body">
+        <div class="planet-btns">
+          <button class="planet-btn p-earth" id="btn-earth" onclick="selectPlanet('earth')">Earth</button>
+          <button class="planet-btn" id="btn-venus" onclick="selectPlanet('venus')">Venus</button>
+          <button class="planet-btn" id="btn-mars"  onclick="selectPlanet('mars')">Mars</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">Entry Conditions</div>
+      <div class="section-body">
+        <div class="control-row">
+          <div class="ctrl-hdr">
+            <span class="ctrl-label">Entry Velocity</span>
+            <span class="ctrl-value" id="val-velocity">7.80 km/s</span>
+          </div>
+          <input type="range" id="sl-velocity" min="3000" max="15000" step="100" value="7800" oninput="syncSlider('velocity')">
+        </div>
+        <div class="control-row">
+          <div class="ctrl-hdr">
+            <span class="ctrl-label">Flight Path Angle</span>
+            <span class="ctrl-value" id="val-fpa">-6.0°</span>
+          </div>
+          <input type="range" id="sl-fpa" min="-30" max="-1" step="0.5" value="-6" oninput="syncSlider('fpa')">
+        </div>
+        <div class="control-row">
+          <div class="ctrl-hdr">
+            <span class="ctrl-label">Initial Altitude</span>
+            <span class="ctrl-value" id="val-altitude">120 km</span>
+          </div>
+          <input type="range" id="sl-altitude" min="80000" max="200000" step="1000" value="120000" oninput="syncSlider('altitude')">
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">Vehicle Properties</div>
+      <div class="section-body">
+        <div class="control-row">
+          <div class="ctrl-hdr">
+            <span class="ctrl-label">Mass</span>
+            <span class="ctrl-value" id="val-mass">3000 kg</span>
+          </div>
+          <input type="range" id="sl-mass" min="100" max="20000" step="50" value="3000" oninput="syncSlider('mass')">
+        </div>
+        <div class="control-row">
+          <div class="ctrl-hdr">
+            <span class="ctrl-label">Drag Coefficient Cd</span>
+            <span class="ctrl-value" id="val-cd">1.20</span>
+          </div>
+          <input type="range" id="sl-cd" min="0.2" max="2.5" step="0.05" value="1.2" oninput="syncSlider('cd')">
+        </div>
+        <div class="control-row">
+          <div class="ctrl-hdr">
+            <span class="ctrl-label">Reference Area A</span>
+            <span class="ctrl-value" id="val-area">10.0 m2</span>
+          </div>
+          <input type="range" id="sl-area" min="0.5" max="30" step="0.5" value="10" oninput="syncSlider('area')">
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">Simulation</div>
+      <div class="section-body">
+        <div class="action-btns">
+          <button class="action-btn btn-start" id="btn-start" onclick="startSim()">START</button>
+          <button class="action-btn btn-pause" id="btn-pause" onclick="pauseSim()" disabled>PAUSE</button>
+          <button class="action-btn btn-reset" onclick="resetSim()">RESET</button>
+        </div>
+        <div class="control-row">
+          <div class="ctrl-hdr">
+            <span class="ctrl-label">Time Warp</span>
+            <span class="ctrl-value" id="val-timewarp">1x</span>
+          </div>
+          <input type="range" id="sl-timewarp" min="1" max="20" step="1" value="1" oninput="syncSlider('timewarp')">
+        </div>
+        <div class="control-row">
+          <div class="ctrl-hdr">
+            <span class="ctrl-label">Delta-t (time step)</span>
+            <span class="ctrl-value" id="val-dt">0.050 s</span>
+          </div>
+          <input type="range" id="sl-dt" min="0.01" max="0.5" step="0.005" value="0.05" oninput="syncSlider('dt')">
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /controls-panel -->
+
+  <!-- CENTRE: CANVAS -->
+  <div id="viewport">
+    <canvas id="mainCanvas"></canvas>
+    <div id="impact-banner">
+      <div class="ib-title">SURFACE IMPACT</div>
+      <div id="impact-rows"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: TELEMETRY -->
+  <div id="telemetry-panel">
+
+    <div class="section">
+      <div class="section-head">Environment</div>
+      <div class="section-body">
+        <div class="telem-group">
+          <div class="telem-row"><span class="telem-key">Planet</span><span class="telem-val tv-accent" id="t-planet">Earth</span></div>
+          <div class="telem-row"><span class="telem-key">Radius</span><span class="telem-val" id="t-radius">6371.0 km</span></div>
+          <div class="telem-row"><span class="telem-key">Surf. Gravity</span><span class="telem-val" id="t-g0">9.807 m/s2</span></div>
+          <div class="telem-row"><span class="telem-key">Scale Height H</span><span class="telem-val" id="t-H">8500 m</span></div>
+          <div class="telem-row"><span class="telem-key">Surf. Density</span><span class="telem-val" id="t-rho0">1.225 kg/m3</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">Flight State</div>
+      <div class="section-body">
+        <div class="telem-group">
+          <div class="telem-row"><span class="telem-key">Altitude</span><span class="telem-val tv-accent" id="t-alt">--- km</span></div>
+          <div class="telem-row"><span class="telem-key">Velocity</span><span class="telem-val tv-accent" id="t-vel">--- km/s</span></div>
+          <div class="telem-row"><span class="telem-key">FPA gamma</span><span class="telem-val" id="t-fpa">---</span></div>
+          <div class="telem-row"><span class="telem-key">Downrange</span><span class="telem-val" id="t-range">--- km</span></div>
+          <div class="telem-row"><span class="telem-key">Sim Time</span><span class="telem-val" id="t-simtime">0.0 s</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">Aerodynamics</div>
+      <div class="section-body">
+        <div class="telem-group">
+          <div class="telem-row"><span class="telem-key">Atm. Density</span><span class="telem-val" id="t-rho">---</span></div>
+          <div class="telem-row"><span class="telem-key">Dyn. Pressure</span><span class="telem-val tv-warn" id="t-q">--- Pa</span></div>
+          <div class="telem-row"><span class="telem-key">Drag Force</span><span class="telem-val" id="t-Fd">--- N</span></div>
+          <div class="telem-row"><span class="telem-key">Drag Accel.</span><span class="telem-val" id="t-aD">--- m/s2</span></div>
+          <div class="telem-row"><span class="telem-key">Gravity g(h)</span><span class="telem-val" id="t-grav">--- m/s2</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">Aero-Thermal Heating</div>
+      <div class="section-body">
+        <div class="telem-group">
+          <div class="telem-row"><span class="telem-key">Heat Flux</span><span class="telem-val tv-danger" id="t-hf">--- W/m2</span></div>
+          <div class="telem-row"><span class="telem-key">Peak Heat Flux</span><span class="telem-val tv-danger" id="t-phf">--- W/m2</span></div>
+        </div>
+        <div style="padding:2px 0">
+          <div style="font-size:9px;color:var(--label);margin-bottom:4px;letter-spacing:1px;font-family:monospace">THERMAL LOAD</div>
+          <div class="heat-bar-wrap"><div class="heat-bar-fill" id="heat-bar" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">Extrema Recorded</div>
+      <div class="section-body">
+        <div class="telem-group">
+          <div class="telem-row"><span class="telem-key">Peak Velocity</span><span class="telem-val" id="t-peakv">---</span></div>
+          <div class="telem-row"><span class="telem-key">Peak Dyn. P.</span><span class="telem-val tv-warn" id="t-peakq">---</span></div>
+          <div class="telem-row"><span class="telem-key">Peak Drag Acc.</span><span class="telem-val" id="t-peakaD">---</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /telemetry-panel -->
+
+  <!-- BOTTOM: GRAPHS -->
+  <div id="graphs-bar">
+    <div class="graph-cell">
+      <div class="graph-label">Altitude vs Time [km / s]</div>
+      <canvas class="graph-canvas" id="g-alt"></canvas>
+    </div>
+    <div class="graph-cell">
+      <div class="graph-label">Velocity vs Time [km/s / s]</div>
+      <canvas class="graph-canvas" id="g-vel"></canvas>
+    </div>
+    <div class="graph-cell">
+      <div class="graph-label">Dynamic Pressure vs Time [kPa / s]</div>
+      <canvas class="graph-canvas" id="g-q"></canvas>
+    </div>
+    <div class="graph-cell">
+      <div class="graph-label">Heat Flux vs Time [MW/m2 / s]</div>
+      <canvas class="graph-canvas" id="g-hf"></canvas>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<script>
+/* ============================================================
+   ATMOSPHERIC RE-ENTRY PHYSICS SIMULATOR
+   Pure HTML5/Canvas — No external dependencies
+   Physics: Euler integration, inverse-square gravity,
+            exponential atmosphere, Sutton-Graves heating
+   ============================================================ */
+
+/* ── PLANETARY DATABASE ── */
+var PLANETS = {
+  earth: {
+    name: 'Earth',
+    radius: 6371000,
+    g0: 9.80665,
+    rho0: 1.225,
+    H: 8500,
+    color: '#39d0ff',
+    btnClass: 'p-earth',
+    surfR: 10, surfG: 42, surfB: 26,   // #0a2a1a
+    skyTop: '#001830', skyMid: '#003060', skyBot: '#000f20'
+  },
+  venus: {
+    name: 'Venus',
+    radius: 6051800,
+    g0: 8.87,
+    rho0: 65.0,
+    H: 15900,
+    color: '#ff9f3a',
+    btnClass: 'p-venus',
+    surfR: 42, surfG: 21, surfB: 0,    // #2a1500
+    skyTop: '#1a0c00', skyMid: '#3a1800', skyBot: '#100800'
+  },
+  mars: {
+    name: 'Mars',
+    radius: 3389500,
+    g0: 3.721,
+    rho0: 0.020,
+    H: 11100,
+    color: '#e84040',
+    btnClass: 'p-mars',
+    surfR: 42, surfG: 15, surfB: 15,   // #2a0f0f
+    skyTop: '#1a0800', skyMid: '#2a1000', skyBot: '#0f0500'
+  }
+};
+
+/* ── HEATING CONSTANT (Sutton-Graves-inspired) ── */
+var K_HEAT = 1.83e-4; // W·s^3 / (kg^0.5 · m^3)
+
+/* ── SIMULATION STATE ── */
+var S = {
+  // User parameters
+  planet:   'earth',
+  V0:       7800,
+  gamma0:   -6 * Math.PI / 180,
+  h0:       120000,
+  mass:     3000,
+  Cd:       1.2,
+  area:     10,
+  dt:       0.05,
+  timewarp: 1,
+  // Integrator state
+  h:        120000,
+  V:        7800,
+  gamma:    -6 * Math.PI / 180,
+  t:        0,
+  downrange:0,
+  // Derived quantities (updated each step)
+  rho:0, q:0, Fd:0, aD:0, grav:0, heatFlux:0,
+  // Extrema
+  peakV:0, peakQ:0, peakAD:0, peakHF:0,
+  // Trajectory trail: array of {h, dr}
+  trail: [],
+  // Time-series for graphs
+  gh_t:[], gh_alt:[], gh_vel:[], gh_q:[], gh_hf:[],
+  // Control flags
+  running: false,
+  paused: false,
+  // Render
+  afId: null,
+  lastTS: 0,
+  fps: 0
+};
+
+/* ══════════════════════════════════════════════
+   PHYSICS ENGINE
+   ══════════════════════════════════════════════ */
+
+/** Inverse-square gravity [m/s^2] */
+function gravity(h) {
+  var p = PLANETS[S.planet];
+  var ratio = p.radius / (p.radius + h);
+  return p.g0 * ratio * ratio;
+}
+
+/** Exponential atmosphere density [kg/m^3] */
+function density(h) {
+  var p = PLANETS[S.planet];
+  if (h < 0) return p.rho0;
+  return Math.max(p.rho0 * Math.exp(-h / p.H), 1e-12);
+}
+
+/** Stagnation-point heat flux q_dot = K * sqrt(rho) * V^3  [W/m^2] */
+function heatFlux(rho, V) {
+  return K_HEAT * Math.sqrt(rho) * V * V * V;
+}
+
+/** One Euler integration step */
+function physicsStep(dt) {
+  var h = S.h, V = S.V, gamma = S.gamma;
+  var p = PLANETS[S.planet];
+
+  var g    = gravity(h);
+  var rho  = density(h);
+  var q    = 0.5 * rho * V * V;          // dynamic pressure [Pa]
+  var Fd   = q * S.Cd * S.area;          // drag force [N]
+  var aD   = Fd / S.mass;                // drag acceleration [m/s^2]
+  var hf   = heatFlux(rho, V);           // heat flux [W/m^2]
+
+  /* 3-DOF entry equations of motion:
+     dV/dt     = -g*sin(gamma) - D/m
+     dh/dt     = -V*sin(gamma)
+     dgamma/dt = (V/(R+h) - g/V) * cos(gamma)  */
+  var dVdt     = -g * Math.sin(gamma) - aD;
+  var dhdt     = -V * Math.sin(gamma);
+  var dRterm   = (p.radius + h > 0) ? V / (p.radius + h) : 0;
+  var dgammadt = (dRterm - (V > 1 ? g / V : 0)) * Math.cos(gamma);
+
+  // Euler update
+  S.V     = Math.max(V + dVdt * dt, 0);
+  S.h     = h + dhdt * dt;
+  S.gamma = gamma + dgammadt * dt;
+
+  // Downrange (horizontal arc)
+  S.downrange += V * Math.cos(gamma) * dt;
+  S.t         += dt;
+
+  // Cache derived
+  S.rho = rho; S.q = q; S.Fd = Fd; S.aD = aD;
+  S.grav = g; S.heatFlux = hf;
+
+  // Extrema
+  if (V   > S.peakV)  S.peakV  = V;
+  if (q   > S.peakQ)  S.peakQ  = q;
+  if (aD  > S.peakAD) S.peakAD = aD;
+  if (hf  > S.peakHF) S.peakHF = hf;
+
+  // Trail
+  S.trail.push({ h: S.h, dr: S.downrange });
+  if (S.trail.length > 2500) S.trail.shift();
+
+  // Graph history
+  var MAX = 3000;
+  S.gh_t.push(S.t);
+  S.gh_alt.push(S.h / 1000);
+  S.gh_vel.push(S.V / 1000);
+  S.gh_q.push(q / 1000);
+  S.gh_hf.push(hf / 1e6);
+  if (S.gh_t.length > MAX) {
+    S.gh_t.shift(); S.gh_alt.shift();
+    S.gh_vel.shift(); S.gh_q.shift(); S.gh_hf.shift();
+  }
+}
+
+/* ══════════════════════════════════════════════
+   RENDERING ENGINE
+   ══════════════════════════════════════════════ */
+var canvas  = document.getElementById('mainCanvas');
+var ctx     = canvas.getContext('2d');
+
+/** Resize canvas to fill viewport div */
+function resizeCanvas() {
+  var vp = document.getElementById('viewport');
+  canvas.width  = vp.clientWidth;
+  canvas.height = vp.clientHeight;
+}
+
+var ATMOS_TOP = 165000; // m shown at top of viewport
+
+/** Altitude (m) -> canvas Y (px) */
+function altToY(h, cH) {
+  var margin = 36;
+  return cH - margin - (h / ATMOS_TOP) * (cH - margin * 2);
+}
+
+/** Downrange (m) -> canvas X (px), scrolls with vehicle */
+function drToX(dr, cW) {
+  var span = 4000000;  // 4000 km window
+  var origin = Math.max(0, S.downrange - span * 0.6);
+  return 36 + ((dr - origin) / span) * (cW - 72);
+}
+
+function drawBackground(cW, cH) {
+  var p = PLANETS[S.planet];
+  var g = ctx.createLinearGradient(0, 0, 0, cH);
+  g.addColorStop(0,   p.skyTop);
+  g.addColorStop(0.5, p.skyMid);
+  g.addColorStop(1,   p.skyBot);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, cW, cH);
+}
+
+function drawAtmosphereGlow(cW, cH) {
+  var p = PLANETS[S.planet];
+  // Parse planet color to rgba
+  var c = p.color;
+  var r = parseInt(c.slice(1,3),16);
+  var g = parseInt(c.slice(3,5),16);
+  var b = parseInt(c.slice(5,7),16);
+  var grad = ctx.createLinearGradient(0, 36, 0, cH - 36);
+  grad.addColorStop(0,   'rgba('+r+','+g+','+b+',0)');
+  grad.addColorStop(0.35,'rgba('+r+','+g+','+b+',0.05)');
+  grad.addColorStop(0.75,'rgba('+r+','+g+','+b+',0.12)');
+  grad.addColorStop(1,   'rgba('+r+','+g+','+b+',0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 36, cW, cH - 72);
+}
+
+function drawGrid(cW, cH) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(26,45,74,0.4)';
+  ctx.lineWidth = 0.8;
+  ctx.setLineDash([2, 8]);
+  var cols = 10, rows = 8;
+  for (var i = 0; i <= cols; i++) {
+    var x = 36 + (i / cols) * (cW - 72);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cH); ctx.stroke();
+  }
+  for (var j = 0; j <= rows; j++) {
+    var y = 36 + (j / rows) * (cH - 72);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cW, y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawSurface(cW, cH) {
+  var p = PLANETS[S.planet];
+  var y = altToY(0, cH);
+  if (y > cH) return;
+
+  var r = p.surfR, g = p.surfG, b = p.surfB;
+  var grad = ctx.createLinearGradient(0, y, 0, cH);
+  grad.addColorStop(0, 'rgba('+(r+30)+','+(g+15)+','+(b+15)+',0.9)');
+  grad.addColorStop(1, 'rgba('+r+','+g+','+b+',1)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, y, cW, cH - y);
+
+  // Surface line
+  ctx.strokeStyle = p.color + 'aa';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cW, y); ctx.stroke();
+
+  // Label
+  ctx.font = '9px monospace';
+  ctx.fillStyle = p.color + 'bb';
+  ctx.fillText('SURFACE  (0 m)', cW - 145, y - 4);
+}
+
+function drawAltMarkers(cW, cH) {
+  var alts   = [0, 25000, 50000, 75000, 100000, 150000];
+  var labels = ['0 km', '25 km', '50 km', '75 km', '100 km (Karman)', '150 km'];
+  var karman = [false, false, false, false, true, false];
+
+  for (var i = 0; i < alts.length; i++) {
+    var y = altToY(alts[i], cH);
+    if (y < 10 || y > cH - 5) continue;
+
+    ctx.save();
+    if (karman[i]) {
+      ctx.strokeStyle = 'rgba(0,195,255,0.55)';
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([6, 4]);
+    } else {
+      ctx.strokeStyle = 'rgba(90,140,180,0.22)';
+      ctx.lineWidth   = 0.7;
+      ctx.setLineDash([2, 8]);
+    }
+    ctx.beginPath(); ctx.moveTo(36, y); ctx.lineTo(cW - 36, y); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font      = '9px monospace';
+    ctx.fillStyle = karman[i] ? 'rgba(0,195,255,0.7)' : 'rgba(91,138,170,0.55)';
+    ctx.fillText(labels[i], 40, y - 3);
+    ctx.restore();
+  }
+}
+
+function drawTrail(cW, cH) {
+  var tr = S.trail;
+  if (tr.length < 2) return;
+  ctx.save();
+  for (var i = 1; i < tr.length; i++) {
+    var alpha = 0.1 + 0.7 * (i / tr.length);
+    ctx.strokeStyle = 'rgba(0,195,255,' + (alpha * 0.55) + ')';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(drToX(tr[i-1].dr, cW), altToY(tr[i-1].h, cH));
+    ctx.lineTo(drToX(tr[i].dr,   cW), altToY(tr[i].h,   cH));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawSpacecraft(cW, cH) {
+  var cx = drToX(S.downrange, cW);
+  var cy = altToY(S.h, cH);
+
+  // Keep visible even near edges (clamp label; still draw)
+  if (cx < 10 || cx > cW - 10 || cy < 10 || cy > cH - 10) return;
+
+  var heatNorm = (S.peakHF > 0) ? Math.min(S.heatFlux / S.peakHF, 1) : 0;
+  var angle = S.gamma; // negative = nose down (into atmosphere)
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  /* ── Plasma / shock glow ── */
+  if (heatNorm > 0.005) {
+    var glowR  = 14 + heatNorm * 42;
+    var glowOp = 0.12 + heatNorm * 0.65;
+
+    // Outer shock layers (additive blend)
+    ctx.globalCompositeOperation = 'lighter';
+    var layers = [
+      { r: glowR,        rc:255, gc:60,  bc:10,  op: glowOp * 0.25 },
+      { r: glowR * 0.7,  rc:255, gc:120, bc:20,  op: glowOp * 0.35 },
+      { r: glowR * 0.45, rc:255, gc:200, bc:80,  op: glowOp * 0.40 },
+      { r: glowR * 0.22, rc:255, gc:255, bc:200, op: glowOp * heatNorm * 0.5 }
+    ];
+    for (var li = 0; li < layers.length; li++) {
+      var l = layers[li];
+      var grd = ctx.createRadialGradient(-8, 0, 0, -8, 0, l.r);
+      grd.addColorStop(0,   'rgba('+l.rc+','+l.gc+','+l.bc+','+l.op.toFixed(3)+')');
+      grd.addColorStop(1,   'rgba(0,0,0,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(-8, 0, l.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /* ── Capsule body ── */
+  // Heat shield color: orange-red at high heating
+  var shR = Math.min(255, 80  + Math.floor(175 * heatNorm));
+  var shG = Math.max(0,   40  - Math.floor(40  * heatNorm));
+  var shB = 10;
+
+  ctx.beginPath();
+  ctx.moveTo(8,  -5);
+  ctx.lineTo(8,   5);
+  ctx.quadraticCurveTo(-2,  7, -10,  6);
+  ctx.quadraticCurveTo(-14, 0, -10, -6);
+  ctx.quadraticCurveTo(-2, -7,   8, -5);
+  ctx.closePath();
+
+  var bodyGrd = ctx.createLinearGradient(-14, 0, 8, 0);
+  bodyGrd.addColorStop(0,   'rgb('+shR+','+shG+','+shB+')');
+  bodyGrd.addColorStop(0.45,'#445566');
+  bodyGrd.addColorStop(1,   '#7a8ba0');
+  ctx.fillStyle = bodyGrd;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(180,220,255,0.3)';
+  ctx.lineWidth = 0.6;
+  ctx.stroke();
+
+  // Nose cone
+  ctx.beginPath();
+  ctx.moveTo(8, -5);
+  ctx.lineTo(18, 0);
+  ctx.lineTo(8,  5);
+  ctx.closePath();
+  ctx.fillStyle = '#8899aa';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(180,220,255,0.25)';
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawHUD(cW, cH) {
+  ctx.save();
+  ctx.font = '10px monospace';
+
+  // Planet label watermark
+  var p = PLANETS[S.planet];
+  ctx.globalAlpha = 0.12;
+  ctx.font = 'bold 28px Arial';
+  ctx.fillStyle = p.color;
+  ctx.fillText(p.name.toUpperCase(), cW - 160, 65);
+  ctx.globalAlpha = 1;
+
+  // Running stats overlay
+  ctx.font = '10px monospace';
+  ctx.fillStyle = 'rgba(0,195,255,0.55)';
+  ctx.fillText('T+ ' + S.t.toFixed(1) + ' s', 42, 26);
+  ctx.fillText('h = ' + (S.h/1000).toFixed(2) + ' km', 42, 38);
+
+  ctx.restore();
+}
+
+/* ── Main render frame ── */
+function render(ts) {
+  if (!S.afId) return;
+
+  // FPS counter
+  if (S.lastTS > 0) S.fps = Math.round(1000 / Math.max(ts - S.lastTS, 1));
+  S.lastTS = ts;
+
+  // Physics
+  if (S.running && !S.paused) {
+    for (var step = 0; step < S.timewarp; step++) {
+      if (S.h <= 0) { onImpact(); break; }
+      physicsStep(S.dt);
+    }
+  }
+
+  // Draw
+  var cW = canvas.width, cH = canvas.height;
+  drawBackground(cW, cH);
+  drawAtmosphereGlow(cW, cH);
+  drawGrid(cW, cH);
+  drawSurface(cW, cH);
+  drawAltMarkers(cW, cH);
+  drawTrail(cW, cH);
+  drawSpacecraft(cW, cH);
+  drawHUD(cW, cH);
+
+  // Update UI
+  updateTelemetry();
+  updateGraphs();
+  document.getElementById('fpsDisplay').textContent = S.fps + ' FPS';
+
+  S.afId = requestAnimationFrame(render);
+}
+
+/* ══════════════════════════════════════════════
+   TELEMETRY UPDATER
+   ══════════════════════════════════════════════ */
+function fmt(v, d) {
+  if (!isFinite(v)) return '---';
+  return v.toFixed(d === undefined ? 3 : d);
+}
+function fmtSci(v) {
+  if (v === 0 || !isFinite(v)) return '0.000';
+  if (v < 0.001) return v.toExponential(3);
+  if (v < 1)     return v.toFixed(5);
+  if (v < 1000)  return v.toFixed(3);
+  return v.toFixed(0);
+}
+
+function updateTelemetry() {
+  var p = PLANETS[S.planet];
+  document.getElementById('t-planet').textContent = p.name;
+  document.getElementById('t-radius').textContent = (p.radius/1000).toFixed(1) + ' km';
+  document.getElementById('t-g0').textContent     = p.g0 + ' m/s2';
+  document.getElementById('t-H').textContent      = p.H.toLocaleString() + ' m';
+  document.getElementById('t-rho0').textContent   = p.rho0 + ' kg/m3';
+
+  document.getElementById('t-alt').textContent     = fmt(S.h/1000, 2) + ' km';
+  document.getElementById('t-vel').textContent     = fmt(S.V/1000, 3) + ' km/s';
+  document.getElementById('t-fpa').textContent     = fmt(S.gamma * 180 / Math.PI, 2) + ' deg';
+  document.getElementById('t-range').textContent   = fmt(S.downrange/1000, 1) + ' km';
+  document.getElementById('t-simtime').textContent = fmt(S.t, 1) + ' s';
+
+  document.getElementById('t-rho').textContent  = fmtSci(S.rho) + ' kg/m3';
+  document.getElementById('t-q').textContent    = fmt(S.q/1000, 3) + ' kPa';
+  document.getElementById('t-Fd').textContent   = fmt(S.Fd, 1) + ' N';
+  document.getElementById('t-aD').textContent   = fmt(S.aD, 2) + ' m/s2';
+  document.getElementById('t-grav').textContent = fmt(S.grav, 3) + ' m/s2';
+
+  var hfMW  = S.heatFlux / 1e6;
+  var phfMW = S.peakHF   / 1e6;
+  document.getElementById('t-hf').textContent  = fmt(hfMW, 3) + ' MW/m2';
+  document.getElementById('t-phf').textContent = fmt(phfMW, 3) + ' MW/m2';
+
+  document.getElementById('t-peakv').textContent  = fmt(S.peakV/1000, 3) + ' km/s';
+  document.getElementById('t-peakq').textContent  = fmt(S.peakQ/1000, 3) + ' kPa';
+  document.getElementById('t-peakaD').textContent = fmt(S.peakAD, 2) + ' m/s2';
+
+  // Heat bar
+  var barPct = (S.peakHF > 0) ? Math.min(S.heatFlux / S.peakHF, 1) * 100 : 0;
+  document.getElementById('heat-bar').style.width = barPct + '%';
+}
+
+/* ══════════════════════════════════════════════
+   MINI-GRAPH ENGINE
+   ══════════════════════════════════════════════ */
+var gCvs = {
+  alt: document.getElementById('g-alt'),
+  vel: document.getElementById('g-vel'),
+  q:   document.getElementById('g-q'),
+  hf:  document.getElementById('g-hf')
+};
+
+function resizeGraphs() {
+  var keys = Object.keys(gCvs);
+  for (var i = 0; i < keys.length; i++) {
+    var c = gCvs[keys[i]];
+    c.width  = c.clientWidth  || c.parentElement.clientWidth;
+    c.height = c.clientHeight || c.parentElement.clientHeight - 22;
+  }
+}
+
+function drawMiniGraph(cvs, data, color) {
+  var ctx2 = cvs.getContext('2d');
+  var W = cvs.width, H = cvs.height;
+  if (W < 2 || H < 2) return;
+  ctx2.clearRect(0, 0, W, H);
+  if (!data || data.length < 2) return;
+
+  var maxV = -Infinity, minV = Infinity;
+  for (var i = 0; i < data.length; i++) {
+    if (data[i] > maxV) maxV = data[i];
+    if (data[i] < minV) minV = data[i];
+  }
+  if (maxV === minV) maxV = minV + 1;
+  var range = maxV - minV;
+  maxV += range * 0.05;
+
+  // Grid lines
+  ctx2.strokeStyle = 'rgba(26,45,74,0.5)';
+  ctx2.lineWidth = 0.5;
+  for (var gi = 0; gi <= 3; gi++) {
+    var gy = Math.round((gi / 3) * H) + 0.5;
+    ctx2.beginPath(); ctx2.moveTo(0, gy); ctx2.lineTo(W, gy); ctx2.stroke();
+  }
+
+  // Area fill
+  var r2 = parseInt(color.slice(1,3),16);
+  var g2 = parseInt(color.slice(3,5),16);
+  var b2 = parseInt(color.slice(5,7),16);
+  var grad = ctx2.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0,  'rgba('+r2+','+g2+','+b2+',0.35)');
+  grad.addColorStop(1,  'rgba('+r2+','+g2+','+b2+',0)');
+  ctx2.fillStyle = grad;
+  ctx2.beginPath();
+  for (var pi = 0; pi < data.length; pi++) {
+    var px = (pi / (data.length - 1)) * W;
+    var py = H - ((data[pi] - minV) / (maxV - minV)) * H;
+    if (pi === 0) ctx2.moveTo(px, py);
+    else ctx2.lineTo(px, py);
+  }
+  ctx2.lineTo(W, H); ctx2.lineTo(0, H); ctx2.closePath();
+  ctx2.fill();
+
+  // Line
+  ctx2.strokeStyle = color;
+  ctx2.lineWidth = 1.5;
+  ctx2.lineJoin = 'round';
+  ctx2.beginPath();
+  for (var li2 = 0; li2 < data.length; li2++) {
+    var lx = (li2 / (data.length - 1)) * W;
+    var ly = H - ((data[li2] - minV) / (maxV - minV)) * H;
+    if (li2 === 0) ctx2.moveTo(lx, ly);
+    else ctx2.lineTo(lx, ly);
+  }
+  ctx2.stroke();
+
+  // Current value label
+  var lastV = data[data.length - 1];
+  ctx2.font = '9px monospace';
+  ctx2.fillStyle = color;
+  ctx2.fillText(lastV > 100 ? lastV.toFixed(0) : lastV.toFixed(3), 3, 11);
+}
+
+function updateGraphs() {
+  var N = 600;
+  function tail(arr) { return arr.length > N ? arr.slice(-N) : arr; }
+  drawMiniGraph(gCvs.alt, tail(S.gh_alt), '#39d0ff');
+  drawMiniGraph(gCvs.vel, tail(S.gh_vel), '#39ff7a');
+  drawMiniGraph(gCvs.q,   tail(S.gh_q),   '#ffcc00');
+  drawMiniGraph(gCvs.hf,  tail(S.gh_hf),  '#ff6b1a');
+}
+
+/* ══════════════════════════════════════════════
+   SIMULATION CONTROL
+   ══════════════════════════════════════════════ */
+function resetState() {
+  S.h = S.h0; S.V = S.V0; S.gamma = S.gamma0;
+  S.t = 0; S.downrange = 0;
+  S.rho = 0; S.q = 0; S.Fd = 0; S.aD = 0; S.grav = 0; S.heatFlux = 0;
+  S.peakV = 0; S.peakQ = 0; S.peakAD = 0; S.peakHF = 0;
+  S.trail = [];
+  S.gh_t = []; S.gh_alt = []; S.gh_vel = []; S.gh_q = []; S.gh_hf = [];
+}
+
+function setStatusUI(mode) {
+  var dot  = document.getElementById('statusDot');
+  var txt  = document.getElementById('statusText');
+  var btnS = document.getElementById('btn-start');
+  var btnP = document.getElementById('btn-pause');
+  dot.className = 'status-dot';
+  btnP.textContent = 'PAUSE';
+  if (mode === 'running') {
+    txt.textContent = 'RUNNING'; txt.style.color = 'var(--green)';
+    btnS.disabled = true; btnP.disabled = false;
+  } else if (mode === 'paused') {
+    txt.textContent = 'PAUSED'; txt.style.color = 'var(--warn)';
+    btnP.textContent = 'RESUME';
+    btnS.disabled = true; btnP.disabled = false;
+  } else if (mode === 'impact') {
+    txt.textContent = 'IMPACT'; txt.style.color = 'var(--danger)';
+    dot.className = 'status-dot impact-dot';
+    btnS.disabled = false; btnP.disabled = true;
+  } else {
+    txt.textContent = 'STANDBY'; txt.style.color = 'var(--label)';
+    dot.className = 'status-dot idle';
+    btnS.disabled = false; btnP.disabled = true;
+  }
+}
+
+function startSim() {
+  resetState();
+  document.getElementById('impact-banner').style.display = 'none';
+  S.running = true; S.paused = false;
+  setStatusUI('running');
+}
+
+function pauseSim() {
+  if (!S.running) return;
+  S.paused = !S.paused;
+  setStatusUI(S.paused ? 'paused' : 'running');
+}
+
+function resetSim() {
+  S.running = false; S.paused = false;
+  resetState();
+  document.getElementById('impact-banner').style.display = 'none';
+  setStatusUI('standby');
+}
+
+function onImpact() {
+  S.running = false; S.paused = false;
+  S.h = 0;
+  setStatusUI('impact');
+
+  var rows = [
+    ['Planet',         PLANETS[S.planet].name],
+    ['Impact Velocity', (S.V/1000).toFixed(3) + ' km/s'],
+    ['Flight Time',     S.t.toFixed(1) + ' s'],
+    ['Downrange',       (S.downrange/1000).toFixed(1) + ' km'],
+    ['Peak Dyn. Pres.', (S.peakQ/1000).toFixed(2) + ' kPa'],
+    ['Peak Heat Flux',  (S.peakHF/1e6).toFixed(3) + ' MW/m2'],
+    ['Peak Drag Accel.',(S.peakAD).toFixed(2) + ' m/s2'],
+  ];
+  var html = '';
+  for (var i = 0; i < rows.length; i++) {
+    html += '<div class="ib-row"><span class="ib-k">'+rows[i][0]+'</span><span class="ib-v">'+rows[i][1]+'</span></div>';
+  }
+  document.getElementById('impact-rows').innerHTML = html;
+  document.getElementById('impact-banner').style.display = 'block';
+}
+
+/* ══════════════════════════════════════════════
+   SLIDER SYNC
+   ══════════════════════════════════════════════ */
+function syncSlider(key) {
+  var el = document.getElementById('sl-' + key);
+  var v  = parseFloat(el.value);
+  switch (key) {
+    case 'velocity':
+      S.V0 = v;
+      document.getElementById('val-velocity').textContent = (v/1000).toFixed(2) + ' km/s';
+      break;
+    case 'fpa':
+      S.gamma0 = v * Math.PI / 180;
+      document.getElementById('val-fpa').textContent = v.toFixed(1) + ' deg';
+      break;
+    case 'altitude':
+      S.h0 = v;
+      document.getElementById('val-altitude').textContent = (v/1000).toFixed(0) + ' km';
+      break;
+    case 'mass':
+      S.mass = v;
+      document.getElementById('val-mass').textContent = v.toFixed(0) + ' kg';
+      break;
+    case 'cd':
+      S.Cd = v;
+      document.getElementById('val-cd').textContent = v.toFixed(2);
+      break;
+    case 'area':
+      S.area = v;
+      document.getElementById('val-area').textContent = v.toFixed(1) + ' m2';
+      break;
+    case 'timewarp':
+      S.timewarp = Math.round(v);
+      document.getElementById('val-timewarp').textContent = S.timewarp + 'x';
+      break;
+    case 'dt':
+      S.dt = v;
+      document.getElementById('val-dt').textContent = v.toFixed(3) + ' s';
+      break;
+  }
+}
+
+function selectPlanet(id) {
+  S.planet = id;
+  var ids = ['earth', 'venus', 'mars'];
+  for (var i = 0; i < ids.length; i++) {
+    var btn = document.getElementById('btn-' + ids[i]);
+    btn.className = 'planet-btn' + (ids[i] === id ? ' ' + PLANETS[ids[i]].btnClass : '');
+  }
+  resetSim();
+}
+
+/* ══════════════════════════════════════════════
+   INIT
+   ══════════════════════════════════════════════ */
+function init() {
+  resizeCanvas();
+  resizeGraphs();
+  // Initialise slider display
+  var keys = ['velocity','fpa','altitude','mass','cd','area','timewarp','dt'];
+  for (var i = 0; i < keys.length; i++) syncSlider(keys[i]);
+  setStatusUI('standby');
+  S.afId = requestAnimationFrame(render);
+}
+
+window.addEventListener('resize', function() {
+  resizeCanvas();
+  resizeGraphs();
+});
+
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
